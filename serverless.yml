@@ -1,0 +1,127 @@
+# serverless.yml
+
+service: webpageList
+
+
+
+#plugin per poder utilitzar s3 bucket amb serverless framework
+plugins:
+  - serverless-s3-sync
+
+
+#Hi posarem variables pels noms de les taules i bucket i la configuracio pel pluggin
+custom:
+  s3Sync:
+    - bucketName: ${self:custom.pageName}
+      localDir: static
+
+  tableName: 'votes-table-TFG-${self:provider.stage}'
+  pageName: 'webpage-list-votes-${self:provider.stage}'
+
+
+
+provider:
+  name: aws
+  profile: SchramsServerless
+  runtime: nodejs12.x
+  stage: dev
+  region: eu-west-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+        - lambda:InvokeFunction
+      Resource:
+        - { "Fn::GetAtt": ["VotesDynamoDBTable", "Arn" ] }
+        - arn:aws:lambda:${self:provider.region}:*:*
+
+  environment:
+    VOTES_TABLE: ${self:custom.tableName}
+    BUCKET_NAME: ${self:custom.pageName}
+    REGION: ${self:provider.region}
+    LAMBDA_LIST: ${self:service}-${self:provider.stage}-list
+
+
+
+
+functions:
+  default:
+    handler: index.handler
+    events:
+      - http: 
+          path: default/
+          method: get
+      - stream:
+          type: dynamodb
+          batchSize: 1
+          startingPosition: LATEST
+          arn:
+            Fn::GetAtt:
+              - VotesDynamoDBTable
+              - StreamArn
+  list:
+    handler: functions/list.list
+    events:
+      - http:
+          path: list/
+          method: get
+  create:
+    handler: functions/create.create
+    events:
+      - http:
+          path: create/
+          method: post
+
+
+
+resources:
+  Resources:
+
+    VotesDynamoDBTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: userId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:custom.tableName}
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+    
+    StaticWebPage:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        BucketName: ${self:custom.pageName}
+        WebsiteConfiguration:
+          IndexDocument: index.html
+
+    StaticSiteS3BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: StaticWebPage
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: "*"
+              Action:
+              - s3:GetObject
+              Resource:
+                Fn::Join: [
+                  "", [
+                    "arn:aws:s3:::",
+                    {
+                      "Ref": "StaticWebPage"
+                    },
+                    "/*"
+                  ]
+                ]
