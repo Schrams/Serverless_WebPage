@@ -15,6 +15,6 @@
     "serverless-http": "^2.3.0"
   },
   "devDependencies": {
-    "serverless-s3-sync": "^1.10.0"
+    "serverless-s3-sync": "^1.10.1"
   }
 }
