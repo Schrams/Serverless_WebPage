@@ -7,16 +7,21 @@ service: webpageList
 #plugin per poder utilitzar s3 bucket amb serverless framework
 plugins:
   - serverless-s3-sync
+  - serverless-plugin-scripts
 
 
 #Hi posarem variables pels noms de les taules i bucket i la configuracio pel pluggin
 custom:
+  scripts:
+    hooks:
+      'deploy:finalize': sls invoke -f createTable
+
   s3Sync:
-    - bucketName: ${self:custom.pageName}
+    - bucketName: ${self:custom.bucketName}
       localDir: static
 
   tableName: 'votes-table-TFG-${self:provider.stage}'
-  pageName: 'webpage-list-votes-${self:provider.stage}'
+  bucketName: 's3-tfg-tutorial-${self:provider.stage}'
 
 
 
@@ -25,7 +30,7 @@ provider:
   profile: SchramsServerless
   runtime: nodejs12.x
   stage: dev
-  region: eu-west-1
+  region: eu-west-2
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -34,23 +39,36 @@ provider:
       Resource:
         - { "Fn::GetAtt": ["VotesDynamoDBTable", "Arn" ] }
         - arn:aws:lambda:${self:provider.region}:*:*
+        
 
   environment:
     VOTES_TABLE: ${self:custom.tableName}
-    BUCKET_NAME: ${self:custom.pageName}
+    BUCKET_NAME: ${self:custom.bucketName}
     REGION: ${self:provider.region}
     LAMBDA_LIST: ${self:service}-${self:provider.stage}-list
 
 
 
-
+#Bloc on definim les nostres Lambdes
 functions:
   default:
-    handler: index.handler
+    handler: functions/default.default
     events:
       - http: 
           path: default/
           method: get
+  list:
+    handler: functions/list.list
+ 
+  create:
+    handler: functions/create.create
+    events:
+      - http:
+          path: create/
+          method: post
+  createTable:
+    handler: functions/createTable.createTable
+    events:
       - stream:
           type: dynamodb
           batchSize: 1
@@ -59,24 +77,11 @@ functions:
             Fn::GetAtt:
               - VotesDynamoDBTable
               - StreamArn
-  list:
-    handler: functions/list.list
-    events:
-      - http:
-          path: list/
-          method: get
-  create:
-    handler: functions/create.create
-    events:
-      - http:
-          path: create/
-          method: post
 
 
-
+#Bloc on definim els recursos que utilitzen les nostres Lambdes
 resources:
   Resources:
-
     VotesDynamoDBTable:
       Type: 'AWS::DynamoDB::Table'
       Properties:
@@ -95,11 +100,11 @@ resources:
         StreamSpecification:
           StreamViewType: NEW_IMAGE
     
-    StaticWebPage:
+    BucketForHTML:
       Type: AWS::S3::Bucket
       Properties:
         AccessControl: PublicRead
-        BucketName: ${self:custom.pageName}
+        BucketName: ${self:custom.bucketName}
         WebsiteConfiguration:
           IndexDocument: index.html
 
@@ -107,20 +112,20 @@ resources:
       Type: AWS::S3::BucketPolicy
       Properties:
         Bucket:
-          Ref: StaticWebPage
+          Ref: BucketForHTML
         PolicyDocument:
           Statement:
             - Sid: PublicReadGetObject
               Effect: Allow
               Principal: "*"
               Action:
-              - s3:GetObject
+              - s3:*
               Resource:
                 Fn::Join: [
                   "", [
                     "arn:aws:s3:::",
                     {
-                      "Ref": "StaticWebPage"
+                      "Ref": "BucketForHTML"
                     },
                     "/*"
                   ]

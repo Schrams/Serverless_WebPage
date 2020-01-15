@@ -3,9 +3,9 @@ const waterfall = require('async-waterfall');
 const s3 = new AWS.S3();
 
 
-exports.handler = function (event, context, callback) {
+exports.default = function (event, context, callback) {
   
-  //Paràmetres del nostre bucket i html que hi tenim guardat
+  //Paràmetres del nostre bucket i html estàtic que hi tenim guardat
   var params = {
     Bucket: process.env.BUCKET_NAME,
     Key: "index.html"
@@ -25,38 +25,27 @@ exports.handler = function (event, context, callback) {
     }
   });
 
-  //cridem a la Lambda que ens retornara la llista de vots
+  //Agafem la llista de vots del fitxer d'S3
   }, function(web, callback) {
-    var lambda = new AWS.Lambda({
-      region: process.env.region
-    });
     
-    lambda.invoke({
-      FunctionName: process.env.LAMBDA_LIST,
-      InvocationType: "RequestResponse",
+    s3.getObject({
+      Bucket: process.env.BUCKET_NAME,
+      Key: "vots.txt"
     }, function(err, data) {
       if (err) {
         console.log(err, err.stack);
         callback(err);
       }
       else {
-        console.log(data.Payload);
-        var jsonData = JSON.parse(data.Payload);
-        console.log(jsonData.body);
-        var votes = jsonData.body;
-        callback(null, web, votes);
+        var taulaVots = data.Body.toString('ascii');
+        callback(null, web, taulaVots);
       }
     });
 
-    // Tenim ja vots i html només cal retornar el html amb la llista de vots corresponent
-  }, function(web, votes, callback) {
-    var index;
-    var votesHTML = "";
-    for (index = 0; index < votes.length; ++index) {
-      votesHTML = votesHTML + "<tr><td>" + votes[index].userId + "</td><td>" + votes[index].numVotes + "</td></tr>";
-    }
+    // Tenim ja la taula amb els vots pasada a String i l'html. Només cal retornar el html amb la llista de vots corresponent sustituint una etiqueta
+  }, function(web, taulaVots, callback) {
     var re = /#FilesDeVots#/;
-    var webReemplacadaAmbVots = web.replace(re, votesHTML);
+    var webReemplacadaAmbVots = web.replace(re, taulaVots);
     console.log(webReemplacadaAmbVots);
     const response = {
       statusCode: 200,

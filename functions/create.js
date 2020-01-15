@@ -29,16 +29,6 @@ module.exports.create = (event, context, callback) => {
     },
   };
 
-/*
-  const params = {
-    TableName: process.env.VOTES_TABLE,
-    Item: {
-      userId: data.userId,
-      numVotes: 1,
-    },
-  };
-*/
-
   // insertItem
   dynamoDb.update(params, (error) => {
     // tractament d'errors i cas en que ja existeix
